@@ -1,10 +1,13 @@
 using System.Collections.Generic;
+using Audit.Core;
 using Newtonsoft.Json;
 
 namespace Audit.Mvc
 {
-    public class AuditAction
+    public class AuditAction : IAuditOutput
     {
+        [JsonProperty(Order = -1, NullValueHandling = NullValueHandling.Ignore)]
+        public string TraceId { get; set; }
         [JsonProperty(Order = 0)]
         public string HttpMethod { get; set; }
         [JsonProperty(Order = 5)]
@@ -19,6 +22,10 @@ namespace Audit.Mvc
         public IDictionary<string, string> FormVariables { get; set; }
         [JsonProperty(Order = 20)]
         public IDictionary<string, object> ActionParameters { get; set; }
+        [JsonProperty(Order = 22, NullValueHandling = NullValueHandling.Ignore)]
+        public BodyContent RequestBody { get; set; }
+        [JsonProperty(Order = 23, NullValueHandling = NullValueHandling.Ignore)]
+        public BodyContent ResponseBody { get; set; }
         [JsonProperty(Order = 25)]
         public string UserName { get; set; }
         [JsonProperty(Order = 30)]
@@ -41,5 +48,23 @@ namespace Audit.Mvc
         public string RedirectLocation { get; set; }
         [JsonProperty(Order = 999, NullValueHandling = NullValueHandling.Ignore)]
         public string Exception { get; set; }
+        [JsonExtensionData]
+        public Dictionary<string, object> CustomFields { get; set; } = new Dictionary<string, object>();
+
+        /// <summary>
+        /// Serializes this Audit Action as a JSON string
+        /// </summary>
+        public string ToJson()
+        {
+            return JsonConvert.SerializeObject(this, Core.Configuration.JsonSettings);
+        }
+        /// <summary>
+        /// Parses an Audit Action from its JSON string representation.
+        /// </summary>
+        /// <param name="json">JSON string with the Entity Audit Action representation.</param>
+        public static AuditAction FromJson(string json)
+        {
+            return JsonConvert.DeserializeObject<AuditAction>(json, Core.Configuration.JsonSettings);
+        }
     }
 }

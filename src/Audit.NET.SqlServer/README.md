@@ -6,12 +6,14 @@ Store the audit events in a SQL Table, in JSON format.
 ## Install
 
 **NuGet Package** 
+To install the package run the following command on the Package Manager Console:
 
 ```
 PM> Install-Package Audit.NET.SqlServer
 ```
 
 [![NuGet Status](https://img.shields.io/nuget/v/Audit.NET.SqlServer.svg?style=flat)](https://www.nuget.org/packages/Audit.NET.SqlServer/)
+[![NuGet Count](https://img.shields.io/nuget/dt/Audit.NET.SqlServer.svg)](https://www.nuget.org/packages/Audit.NET.SqlServer/)
 
 ## Usage
 Please see the [Audit.NET Readme](https://github.com/thepirat000/Audit.NET#usage)
@@ -23,8 +25,7 @@ For example:
 ```c#
 Audit.Core.Configuration.DataProvider = new SqlDataProvider()
 {
-    ConnectionString =
-        "data source=localhost;initial catalog=Audit;integrated security=true;",
+    ConnectionString = "data source=localhost;initial catalog=Audit;integrated security=true;",
     Schema = "dbo",
     TableName = "Event",
     IdColumnName = "EventId",
@@ -38,12 +39,23 @@ Or by using the [fluent configuration API](https://github.com/thepirat000/Audit.
 Audit.Core.Configuration.Setup()
     .UseSqlServer(config => config
         .ConnectionString("data source=localhost;initial catalog=Audit;integrated security=true;")
-	    .Schema("dbo")
+	.Schema("dbo")
         .TableName("Event")
         .IdColumnName("EventId")
         .JsonColumnName("Data")
         .LastUpdatedColumnName("LastUpdatedDate"));
 ```
+
+You can provide any of the settings as a function of the [Audit Event](https://github.com/thepirat000/Audit.NET#usage), 
+for example to use a connection string per machine, and different table names:
+
+```c#
+Audit.Core.Configuration.Setup()
+    .UseSqlServer(config => config
+        .ConnectionString(ev => GetCnnString(ev.Environment.MachineName))
+        .TableName(ev => ev.EventType == "Order" ? "OrderAudits" : "Audits"));
+```
+
 
 ### Provider Options
 
@@ -56,6 +68,14 @@ Mandatory:
 Optional:
 - **Schema**: The SQL schema to use.
 - **LastUpdatedDateColumnName**: The datetime column name to update when replacing events.
+
+## Query events
+
+This provider implements `GetEvent` and `GetEventAsync` methods to obtain an audit event by id:
+
+```c#
+var event = sqlDataProvider.GetEvent(1000);
+```
 
 ## Table constraints
 

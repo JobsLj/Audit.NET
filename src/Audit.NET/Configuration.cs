@@ -2,6 +2,8 @@
 using System.Collections.Generic;
 using Audit.Core.Providers;
 using Audit.Core.ConfigurationApi;
+using System.Linq;
+using Newtonsoft.Json;
 
 namespace Audit.Core
 {
@@ -18,13 +20,29 @@ namespace Audit.Core
         /// Gets or Sets the Default data provider.
         /// </summary>
         public static AuditDataProvider DataProvider { get; set; }
+        /// <summary>
+        /// Global switch to disable audit logging. Default is false.
+        /// </summary>
+        public static bool AuditDisabled { get; set; }
+        /// <summary>
+        /// Global json serializer settings for serializing the audit event on the data providers or by calling the ToJson() method on the AuditEvent.
+        /// </summary>
+        public static JsonSerializerSettings JsonSettings { get; set; }
 
         internal static Dictionary<ActionType, List<Action<AuditScope>>> AuditScopeActions { get; private set; }
 
+        internal static object Locker = new object();
+
         static Configuration()
         {
+            AuditDisabled = false;
             DataProvider = new FileDataProvider();
             CreationPolicy = EventCreationPolicy.InsertOnEnd;
+            JsonSettings = new JsonSerializerSettings
+            {
+                NullValueHandling = NullValueHandling.Ignore,
+                ReferenceLoopHandling = ReferenceLoopHandling.Ignore
+            };
             ResetCustomActions();
         }
 
@@ -43,25 +61,74 @@ namespace Audit.Core
         /// <param name="action">The action to perform.</param>
         public static void AddCustomAction(ActionType when, Action<AuditScope> action)
         {
-            AuditScopeActions[when].Add(action);
+            lock (Locker)
+            {
+                AuditScopeActions[when].Add(action);
+            }
         }
+
+        /// <summary>
+        /// Attaches a global action to be performed on the audit scope before the audit event is saved.
+        /// </summary>
+        /// <param name="action">The action to perform.</param>
+        public static void AddOnSavingAction(Action<AuditScope> action)
+        {
+            lock (Locker)
+            {
+                AuditScopeActions[ActionType.OnEventSaving].Add(action);
+            }
+        }
+
+        /// <summary>
+        /// Attaches a global action to be performed on the audit scope right after it is created and before any saving.
+        /// </summary>
+        /// <param name="action">The action to perform.</param>
+        public static void AddOnCreatedAction(Action<AuditScope> action)
+        {
+            lock (Locker)
+            {
+                AuditScopeActions[ActionType.OnScopeCreated].Add(action);
+            }
+        }
+
         /// <summary>
         /// Resets the audit scope handlers. Removes all the attached actions for the Audit Scopes.
         /// </summary>
         public static void ResetCustomActions()
         {
-            AuditScopeActions = new Dictionary<ActionType, List<Action<AuditScope>>>()
+            lock (Locker)
             {
-                {ActionType.OnScopeCreated, new List<Action<AuditScope>>()},
-                {ActionType.OnEventSaving, new List<Action<AuditScope>>()},
-            };
+                AuditScopeActions = new Dictionary<ActionType, List<Action<AuditScope>>>()
+                {
+                    {ActionType.OnScopeCreated, new List<Action<AuditScope>>()},
+                    {ActionType.OnEventSaving, new List<Action<AuditScope>>()},
+                    {ActionType.OnEventSaved, new List<Action<AuditScope>>()}
+                };
+            }
         }
+
+        /// <summary>
+        /// Removes all the attached actions for the given action type.
+        /// </summary>
+        public static void ResetCustomActions(ActionType actionType)
+        {
+            lock (Locker)
+            {
+                AuditScopeActions[actionType].Clear();
+            }
+        }
+        
         /// <summary>
         /// Invokes the scope custom actions.
         /// </summary>
         internal static void InvokeScopeCustomActions(ActionType type, AuditScope auditScope)
         {
-            foreach (var action in AuditScopeActions[type])
+            List<Action<AuditScope>> actions;
+            lock (Locker)
+            {
+                actions = AuditScopeActions[type].ToList();
+            }
+            foreach (var action in actions)
             {
                 action.Invoke(auditScope);
             }

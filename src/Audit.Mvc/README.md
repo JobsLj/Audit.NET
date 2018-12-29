@@ -9,12 +9,27 @@ Audit.Mvc provides the infrastructure to log interactions with MVC applications.
 ## Install
 
 **NuGet Package** 
+To install the package run the following command on the Package Manager Console:
 
 ```
 PM> Install-Package Audit.Mvc
 ```
 
 [![NuGet Status](https://img.shields.io/nuget/v/Audit.Mvc.svg?style=flat)](https://www.nuget.org/packages/Audit.Mvc/)
+[![NuGet Count](https://img.shields.io/nuget/dt/Audit.Mvc.svg)](https://www.nuget.org/packages/Audit.Mvc/)
+
+# IMPORTANT NOTE
+
+If your project targets the full .NET framework, but you are using AspNet Core (`Microsoft.AspNetCore.Mvc.*`) 
+you should install and reference the `Audit.Mvc.Core` package instead, otherwise it will assume you are targeting
+the old generation of ASP.NET:
+
+```
+PM> Install-Package Audit.Mvc.Core
+```
+
+If your project targets the NET Core framework (NetStandard >= 1.6), there is no difference between using `Audit.Mvc` or `Audit.Mvc.Core` 
+since both assumes AspNet Core.
 
 ## Usage
 
@@ -43,6 +58,12 @@ public class HomeController : Controller
 
 ## Configuration
 
+### Output
+
+The MVC audit events are stored using a _Data Provider_. You can use one of the [available data providers](https://github.com/thepirat000/Audit.NET#data-providers-included) or implement your own. Please refer to the [data providers](https://github.com/thepirat000/Audit.NET#data-providers) section on Audit.NET documentation.
+
+### Settings
+
 The `AuditAttribute` can be configured with the following properties:
 - **EventType**: A string that identifies the event type. Can contain the following placeholders: 
   - \{controller}: replaced with the controller name.
@@ -50,24 +71,26 @@ The `AuditAttribute` can be configured with the following properties:
   - \{verb}: replaced with the HTTP verb used (GET, POST, etc).
 - **IncludeHeaders**: Boolean to indicate whether to include the Http Request Headers or not.
 - **IncludeModel**: Boolean to indicate whether to include the View Model or not.
+- **IncludeRequestBody**: Boolean to indicate whether to include or exclude the request body from the logs. Default is false. (Check following note)
+- **IncludeResponseBody**: Boolean to indicate whether to include response body or not. Default is false.
+- **SerializeActionParameters**: Boolean to indicate whether the action arguments should be pre-serialized to the audit event. Default is false.
 
-To configure the output persistence mechanism please see [Event Output Configuration](https://github.com/thepirat000/Audit.NET/blob/master/README.md#event-output).
+To configure the output persistence mechanism please see [Event Output Configuration](https://github.com/thepirat000/Audit.NET/blob/master/README.md#data-providers).
 
-## Output
+### NOTE
+When **IncludeRequestBody** is set to true you may need to enable rewind on the request body stream, otherwise the controller won't be able to read
+the request body more than once (by default it's a forwand-only stream that can be read only once). You can enable rewind on your startup logic with the following startup code:
 
-Audit.Mvc output includes:
+```c#
+public void Configure(IApplicationBuilder app, IHostingEnvironment env)
+{
+    app.Use(async (context, next) => { 
+        context.Request.EnableRewind();
+        await next();
+    });
+}
+```
 
-- Execution time and duration
-- Environment information such as user, machine, domain and locale.
-- Authenticated username
-- Client IP address
-- Form Variables, Action Parameters
-- Http Headers
-- View Model, View Model State Errors
-- Exceptions
-- Comments and Custom Fields provided
-
-With this information, you can not just know who did the operation, but also measure performance, observe exceptions thrown or get statistics about usage of your application.
 
 ## Output details
 
@@ -77,6 +100,7 @@ The following table describes the Audit.Mvc output fields:
 
 | Field Name | Type | Description | 
 | ------------ | ---------------- |  -------------- |
+| **TraceId** | string | A unique identifier per request |
 | **HttpMethod** | string | HTTP method (GET, POST, etc) |
 | **ControllerName** | string | The controller name |
 | **ActionName** | string | The action name |
@@ -84,6 +108,8 @@ The following table describes the Audit.Mvc output fields:
 | **ViewPath** | string | View physical path (if any) |
 | **FormVariables** | Object | Form-data input variables passed to the action |
 | **ActionParameters** | Object | The action parameters passed |
+| **RequestBody** | [BodyContent](#bodycontent) | The request body (optional) |
+| **ResponseBody** | [BodyContent](#bodycontent) | The response body (optional) |
 | **UserName** | string | Username on the HttpContext Identity |
 | **RequestUrl** | string | URL of the request |
 | **IpAddress** | string | Client IP address |
@@ -95,6 +121,13 @@ The following table describes the Audit.Mvc output fields:
 | **ModelStateErrors** | string | Error description when the model is invalid |
 | **RedirectLocation** | string | The redirect location (if any) |
 | **Exception** | string | The exception thrown details (if any) |
+
+### [BodyContent](https://github.com/thepirat000/Audit.NET/blob/master/src/Audit.Mvc/BodyContent.cs)
+| Field Name | Type | Description | 
+| ------------ | ---------------- |  -------------- |
+| **Type** | string | The body type reported |
+| **Length** | long? | The length of the body if reported |
+| **Value** | Object | The body content |
 
 ## Customization
 
@@ -132,6 +165,7 @@ See [Audit.NET](https://github.com/thepirat000/Audit.NET) documentation about [C
     "EndDate": "2016-08-22T18:31:23.1834012-05:00",
     "Duration": 8529,
     "Action": {
+        "TraceId": "0HLFLQP4HGFAG_00000001",
         "HttpMethod": "GET",
         "ControllerName": "Home",
         "ActionName": "Index",
@@ -167,6 +201,7 @@ See [Audit.NET](https://github.com/thepirat000/Audit.NET) documentation about [C
     "EndDate": "2016-08-22T18:31:15.1705128-05:00",
     "Duration": 15000,
     "Action": {
+        "TraceId": "0HLFLQP4HGFAG_00000002",
         "HttpMethod": "POST",
         "ControllerName": "Home",
         "ActionName": "TestPost",
@@ -206,5 +241,35 @@ See [Audit.NET](https://github.com/thepirat000/Audit.NET) documentation about [C
         "RedirectLocation": null
     }
 }
+```
+
+## MVC template (dotnet new)
+
+If you are creating an ASP.NET Core MVC project from scratch, you can use the 
+**dotnet new template** provided on the library [Audit.Mvc.Template](https://www.nuget.org/packages/Audit.Mvc.Template/).
+This allows to quickly generate an *audit-enabled* MVC project that can be used as a starting point for your project or as a working example.
+
+To install the template on your system, just type:
+
+```sh
+dotnet new -i Audit.Mvc.Template
+```
+
+Once you install the template, you should see it on the dotnet new templates list with the name `mvcaudit` as follows:
+
+![capture](https://i.imgur.com/awBKluE.png)
+
+You can now create a new project on the current folder by running:
+
+```sh
+dotnet new mvcaudit
+```
+
+This will create a new Asp.NET Core 2.1 project.
+
+To get help about the options:
+
+```
+dotnet new mvcaudit -h
 ```
 
